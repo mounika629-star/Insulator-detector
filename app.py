@@ -10,6 +10,9 @@ st.set_page_config(page_title="Insulator Defect Detector", layout="wide")
 st.title("Intelligent Insulator Defect Detector")
 st.write("Upload an insulator image to detect defects using Enhanced YOLOv8 + WBF.")
 
+# Define the class names exactly as they were during training
+CLASS_NAMES = ['good_insulator', 'defective_insulator', 'broken_insulator']
+
 @st.cache_resource
 def load_model():
     return YOLO('best.pt')
@@ -32,8 +35,8 @@ if uploaded_file is not None:
     st.image(image, caption='Uploaded Image', use_container_width=True)
     st.write("Detecting defects...")
 
-    # 1. Predict with higher confidence (0.4) to ignore background noise
-    results = model.predict(img_bgr, conf=0.4, iou=0.5, augment=True, half=True, verbose=False)
+    # 1. Predict with a balanced confidence
+    results = model.predict(img_bgr, conf=0.3, iou=0.5, augment=True, half=True, verbose=False)
 
     # 2. Apply WBF
     boxes_list, scores_list, labels_list = [], [], []
@@ -47,22 +50,31 @@ if uploaded_file is not None:
         scores_list.append(scores)
         labels_list.append(labels)
 
-    # skip_box_thr=0.5 to ignore weak boxes
     fused_boxes, fused_scores, fused_labels = weighted_boxes_fusion(
-        boxes_list, scores_list, labels_list, iou_thr=0.5, skip_box_thr=0.5
+        boxes_list, scores_list, labels_list, iou_thr=0.5, skip_box_thr=0.4
     )
 
-    # 3. Draw final result with higher final filter (score > 0.6)
+    # 3. Draw final result based on the actual class
     found_defect = False
     for box, score, label in zip(fused_boxes, fused_scores, fused_labels):
         x1, y1, x2, y2 = box
         x1, x2 = int(x1 * img_w), int(x2 * img_w)
         y1, y2 = int(y1 * img_h), int(y2 * img_h)
-        if score > 0.6:  # Only show if confidence is > 60%
-            found_defect = True
-            cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            text = f"defect {score:.2f}"
-            cv2.putText(img_bgr, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        
+        if score > 0.4:
+            class_id = int(label)
+            class_name = CLASS_NAMES[class_id] if class_id < len(CLASS_NAMES) else "unknown"
+            
+            # If the class is NOT 'good_insulator', mark as defect
+            if class_name != 'good_insulator':
+                found_defect = True
+                color = (0, 0, 255) # Red for defect
+            else:
+                color = (0, 255, 0) # Green for good
+                
+            cv2.rectangle(img_bgr, (x1, y1), (x2, y2), color, 2)
+            text = f"{class_name} {score:.2f}"
+            cv2.putText(img_bgr, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     if not found_defect:
         st.success("✅ No defects detected. This is a Good Insulator.")
