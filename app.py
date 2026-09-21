@@ -32,8 +32,8 @@ if uploaded_file is not None:
     st.image(image, caption='Uploaded Image', use_container_width=True)
     st.write("Detecting defects...")
 
-    # 1. Predict with slightly higher confidence (0.25 instead of 0.1)
-    results = model.predict(img_bgr, conf=0.25, iou=0.5, augment=True, half=True, verbose=False)
+    # 1. Predict with higher confidence (0.4) to ignore background noise
+    results = model.predict(img_bgr, conf=0.4, iou=0.5, augment=True, half=True, verbose=False)
 
     # 2. Apply WBF
     boxes_list, scores_list, labels_list = [], [], []
@@ -47,18 +47,18 @@ if uploaded_file is not None:
         scores_list.append(scores)
         labels_list.append(labels)
 
-    # skip_box_thr=0.4 to ignore weak boxes
+    # skip_box_thr=0.5 to ignore weak boxes
     fused_boxes, fused_scores, fused_labels = weighted_boxes_fusion(
-        boxes_list, scores_list, labels_list, iou_thr=0.5, skip_box_thr=0.4
+        boxes_list, scores_list, labels_list, iou_thr=0.5, skip_box_thr=0.5
     )
 
-    # 3. Draw final result with higher final filter (score > 0.5)
+    # 3. Draw final result with higher final filter (score > 0.6)
     found_defect = False
     for box, score, label in zip(fused_boxes, fused_scores, fused_labels):
         x1, y1, x2, y2 = box
         x1, x2 = int(x1 * img_w), int(x2 * img_w)
         y1, y2 = int(y1 * img_h), int(y2 * img_h)
-        if score > 0.5:  # Only show if confidence is > 50%
+        if score > 0.6:  # Only show if confidence is > 60%
             found_defect = True
             cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 0, 255), 2)
             text = f"defect {score:.2f}"
